@@ -4,6 +4,8 @@ import FeaturedProducts from "./components/FeaturedProducts";
 import Benefits from "./components/Benefits";
 import Shop from "./components/Shop";
 import PromoBanner from "./components/PromoBanner";
+import Policies from "./components/Policies";
+import ContactSection from "./components/ContactSection";
 import Footer from "./components/Footer";
 
 export default function Home() {
@@ -19,6 +21,8 @@ export default function Home() {
       <Benefits />
       <Shop />
       <PromoBanner />
+      <Policies />
+      <ContactSection />
       <Footer />
     </main>
   );

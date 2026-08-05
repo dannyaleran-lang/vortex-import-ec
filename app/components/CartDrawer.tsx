@@ -1,9 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useStore } from "../context/StoreContext";
+import CheckoutModal from "./CheckoutModal";
 import ProductImage from "./ProductImage";
 
 export default function CartDrawer() {
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
   const {
     cart,
     cartOpen,
@@ -13,23 +17,6 @@ export default function CartDrawer() {
     decreaseQuantity,
     total,
   } = useStore();
-
-  const orderText = [
-    "Hola, deseo realizar este pedido en Vortex Import EC:",
-    "",
-    ...cart.map(
-      (item) =>
-        `${item.quantity} x ${item.name} (${item.code || item.id}) - $${(
-          item.price * item.quantity
-        ).toFixed(2)}`
-    ),
-    "",
-    `Total: $${total.toFixed(2)}`,
-  ].join("\n");
-
-  const whatsappUrl = `https://wa.me/593992656247?text=${encodeURIComponent(
-    orderText
-  )}`;
 
   return (
     <>
@@ -140,20 +127,21 @@ export default function CartDrawer() {
             <span className="text-3xl font-black">${total.toFixed(2)}</span>
           </div>
 
-          <a
-            href={cart.length ? whatsappUrl : undefined}
-            target="_blank"
-            rel="noreferrer"
-            className={`mt-5 block rounded-full px-5 py-4 text-center font-black transition ${
-              cart.length
-                ? "bg-blue-600 hover:bg-blue-500"
-                : "pointer-events-none bg-gray-800 text-gray-500"
-            }`}
+          <button
+            type="button"
+            onClick={() => setCheckoutOpen(true)}
+            disabled={!cart.length}
+            className="mt-5 w-full rounded-full bg-blue-600 px-5 py-4 text-center font-black transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
           >
-            Finalizar pedido por WhatsApp
-          </a>
+            Continuar con el pedido
+          </button>
         </div>
       </aside>
+
+      <CheckoutModal
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+      />
     </>
   );
 }
