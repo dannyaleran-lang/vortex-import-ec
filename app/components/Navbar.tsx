@@ -48,6 +48,13 @@ export default function Navbar() {
 
         <div className="hidden items-center gap-3 lg:flex">
           <a
+            href="/admin"
+            className="rounded-full border border-white/15 px-4 py-2.5 text-sm font-bold transition hover:border-blue-500 hover:text-blue-400"
+          >
+            Admin
+          </a>
+
+          <a
             href="#tienda"
             className="rounded-full border border-white/15 px-4 py-2.5 text-sm font-bold transition hover:border-red-500 hover:text-red-400"
           >
@@ -91,6 +98,13 @@ export default function Navbar() {
                 {label}
               </a>
             ))}
+
+            <a
+              href="/admin"
+              className="rounded-full border border-white/15 px-5 py-3 font-bold"
+            >
+              Panel administrativo
+            </a>
 
             <button
               type="button"

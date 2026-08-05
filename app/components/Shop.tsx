@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Product } from "../../data/products";
-import { products } from "../../data/products";
+import { useCatalog } from "../context/CatalogContext";
 import { useStore } from "../context/StoreContext";
 import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
@@ -12,6 +12,7 @@ const PRODUCTS_PER_PAGE = 12;
 type SortOption = "featured" | "price-asc" | "price-desc" | "name";
 
 export default function Shop() {
+  const { products } = useCatalog();
   const { favorites } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todos");
@@ -25,7 +26,7 @@ export default function Shop() {
       "Todos",
       ...Array.from(new Set(products.map((product) => product.category))).sort(),
     ],
-    []
+    [products]
   );
 
   const filteredProducts = useMemo(() => {
@@ -34,12 +35,10 @@ export default function Shop() {
     const result = products.filter((product) => {
       const matchesCategory =
         category === "Todos" || product.category === category;
-
       const matchesSearch =
         !normalized ||
         product.name.toLowerCase().includes(normalized) ||
         product.code.toLowerCase().includes(normalized);
-
       const matchesFavorites =
         !onlyFavorites || favorites.includes(product.id);
 
@@ -52,7 +51,7 @@ export default function Shop() {
       if (sort === "name") return a.name.localeCompare(b.name);
       return Number(b.featured) - Number(a.featured);
     });
-  }, [query, category, sort, onlyFavorites, favorites]);
+  }, [products, query, category, sort, onlyFavorites, favorites]);
 
   useEffect(() => {
     setVisibleCount(PRODUCTS_PER_PAGE);

@@ -1,10 +1,14 @@
 "use client";
 
-import { products } from "../../data/products";
 import ProductImage from "./ProductImage";
+import { useCatalog } from "../context/CatalogContext";
 
 export default function Hero() {
-  const featured = products.find((product) => product.featured) ?? products[0];
+  const { products } = useCatalog();
+  const featured =
+    products.find((product) => product.featured) ?? products[0];
+
+  if (!featured) return null;
 
   return (
     <section
@@ -36,30 +40,12 @@ export default function Hero() {
             >
               Comprar ahora
             </a>
-
             <a
               href="#categorias"
               className="rounded-full border border-white/20 px-8 py-4 text-center text-lg font-black transition hover:border-blue-500 hover:text-blue-400"
             >
               Ver categorías
             </a>
-          </div>
-
-          <div className="mt-14 grid max-w-3xl grid-cols-2 gap-4 md:grid-cols-4">
-            {[
-              ["99+", "Productos"],
-              ["Ecuador", "Cobertura"],
-              ["Servientrega", "Envíos"],
-              ["WhatsApp", "Atención"],
-            ].map(([value, label]) => (
-              <div
-                key={value}
-                className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur"
-              >
-                <p className="text-lg font-black">{value}</p>
-                <p className="mt-1 text-xs text-gray-400">{label}</p>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -71,19 +57,24 @@ export default function Hero() {
               Producto destacado
             </span>
 
-            <ProductImage
-  image={featured.image}
-  name={featured.name}
-  className="aspect-square h-full w-full object-contain p-8"
-/>
-            <div className="mt-6 flex items-end justify-between gap-5 text-black">
+            <div className="aspect-square w-full">
+              <ProductImage
+                image={featured.image}
+                name={featured.name}
+                className="h-full w-full object-contain p-8"
+              />
+            </div>
+
+            <div className="mt-6 flex flex-col gap-4 text-black sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
                   {featured.category}
                 </p>
                 <p className="mt-2 text-2xl font-black">{featured.name}</p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Código: {featured.code || "Sin código"}
+                </p>
               </div>
-
               <p className="text-3xl font-black">${featured.price.toFixed(2)}</p>
             </div>
           </div>
