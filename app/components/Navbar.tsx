@@ -6,20 +6,18 @@ import { useStore } from "../context/StoreContext";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { cartCount, setCartOpen } = useStore();
-
-  const whatsappUrl =
-    "https://wa.me/593992656247?text=Hola%2C%20deseo%20informaci%C3%B3n%20sobre%20los%20productos%20de%20Vortex%20Import%20EC.";
+  const { cartCount, favorites, setCartOpen } = useStore();
 
   const links = [
     ["Inicio", "#inicio"],
+    ["Destacados", "#destacados"],
     ["Tienda", "#tienda"],
     ["Categorías", "#categorias"],
     ["Contacto", "#contacto"],
   ];
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/85 backdrop-blur-xl">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
         <a href="#inicio" className="flex items-center gap-3">
           <Image
@@ -36,38 +34,36 @@ export default function Navbar() {
           </div>
         </a>
 
-        <div className="hidden items-center gap-7 lg:flex">
+        <div className="hidden items-center gap-6 lg:flex">
           {links.map(([label, href]) => (
-            <a key={href} href={href} className="text-sm text-gray-300 transition hover:text-blue-400">
+            <a
+              key={href}
+              href={href}
+              className="text-sm text-gray-300 transition hover:text-blue-400"
+            >
               {label}
             </a>
           ))}
         </div>
 
         <div className="hidden items-center gap-3 lg:flex">
-          <span className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold">
-            ES / EN
-          </span>
+          <a
+            href="#tienda"
+            className="rounded-full border border-white/15 px-4 py-2.5 text-sm font-bold transition hover:border-red-500 hover:text-red-400"
+          >
+            ♥ {favorites.length}
+          </a>
 
           <button
             type="button"
             onClick={() => setCartOpen(true)}
-            className="relative rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold transition hover:border-blue-500"
+            className="rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold transition hover:border-blue-500"
           >
             Carrito
             <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 text-xs">
               {cartCount}
             </span>
           </button>
-
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold transition hover:bg-blue-500"
-          >
-            WhatsApp
-          </a>
         </div>
 
         <button
@@ -86,7 +82,12 @@ export default function Navbar() {
         <div className="border-t border-white/10 bg-black px-5 py-6 lg:hidden">
           <div className="flex flex-col gap-5">
             {links.map(([label, href]) => (
-              <a key={href} href={href} onClick={() => setMenuOpen(false)} className="text-gray-200">
+              <a
+                key={href}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                className="text-gray-200"
+              >
                 {label}
               </a>
             ))}
@@ -101,10 +102,6 @@ export default function Navbar() {
             >
               Carrito ({cartCount})
             </button>
-
-            <a href={whatsappUrl} target="_blank" rel="noreferrer" className="rounded-full bg-blue-600 px-5 py-3 text-center font-bold">
-              WhatsApp
-            </a>
           </div>
         </div>
       )}

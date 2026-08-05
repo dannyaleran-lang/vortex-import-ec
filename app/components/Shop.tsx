@@ -3,14 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Product } from "../../data/products";
 import { products } from "../../data/products";
+import { useStore } from "../context/StoreContext";
 import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 
 const PRODUCTS_PER_PAGE = 12;
 
+type SortOption = "featured" | "price-asc" | "price-desc" | "name";
+
 export default function Shop() {
+  const { favorites } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todos");
+  const [sort, setSort] = useState<SortOption>("featured");
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PRODUCTS_PER_PAGE);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -25,7 +31,7 @@ export default function Shop() {
   const filteredProducts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
-    return products.filter((product) => {
+    const result = products.filter((product) => {
       const matchesCategory =
         category === "Todos" || product.category === category;
 
@@ -34,13 +40,23 @@ export default function Shop() {
         product.name.toLowerCase().includes(normalized) ||
         product.code.toLowerCase().includes(normalized);
 
-      return matchesCategory && matchesSearch;
+      const matchesFavorites =
+        !onlyFavorites || favorites.includes(product.id);
+
+      return matchesCategory && matchesSearch && matchesFavorites;
     });
-  }, [query, category]);
+
+    return [...result].sort((a, b) => {
+      if (sort === "price-asc") return a.price - b.price;
+      if (sort === "price-desc") return b.price - a.price;
+      if (sort === "name") return a.name.localeCompare(b.name);
+      return Number(b.featured) - Number(a.featured);
+    });
+  }, [query, category, sort, onlyFavorites, favorites]);
 
   useEffect(() => {
     setVisibleCount(PRODUCTS_PER_PAGE);
-  }, [query, category]);
+  }, [query, category, sort, onlyFavorites]);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasMore = visibleCount < filteredProducts.length;
@@ -75,7 +91,7 @@ export default function Shop() {
 
       <section id="tienda" className="px-6 pb-24">
         <div className="mx-auto max-w-7xl">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.3em] text-blue-400">
                 Catálogo Vortex
@@ -88,17 +104,36 @@ export default function Shop() {
               </p>
             </div>
 
-            <div className="w-full md:max-w-md">
-              <label htmlFor="search" className="sr-only">
-                Buscar productos
-              </label>
+            <div className="grid w-full gap-3 md:grid-cols-[1fr_auto_auto] xl:max-w-3xl">
               <input
-                id="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Buscar por nombre o código..."
                 className="w-full rounded-full border border-white/15 bg-white/[0.05] px-5 py-4 outline-none transition placeholder:text-gray-500 focus:border-blue-500"
               />
+
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as SortOption)}
+                className="rounded-full border border-white/15 bg-[#111] px-5 py-4 font-bold outline-none focus:border-blue-500"
+              >
+                <option value="featured">Destacados primero</option>
+                <option value="price-asc">Precio: menor a mayor</option>
+                <option value="price-desc">Precio: mayor a menor</option>
+                <option value="name">Nombre A-Z</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setOnlyFavorites((value) => !value)}
+                className={`rounded-full px-5 py-4 font-bold transition ${
+                  onlyFavorites
+                    ? "bg-red-500 text-white"
+                    : "border border-white/15 hover:border-red-500 hover:text-red-400"
+                }`}
+              >
+                ♥ Favoritos ({favorites.length})
+              </button>
             </div>
           </div>
 
@@ -130,7 +165,7 @@ export default function Shop() {
             </>
           ) : (
             <div className="mt-10 rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center text-gray-400">
-              No encontramos productos con esa búsqueda.
+              No encontramos productos con esos filtros.
             </div>
           )}
         </div>
