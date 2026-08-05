@@ -2,9 +2,12 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { useStore } from "../context/StoreContext";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { cartCount, setCartOpen } = useStore();
+
   const whatsappUrl =
     "https://wa.me/593992656247?text=Hola%2C%20deseo%20informaci%C3%B3n%20sobre%20los%20productos%20de%20Vortex%20Import%20EC.";
 
@@ -45,9 +48,18 @@ export default function Navbar() {
           <span className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold">
             ES / EN
           </span>
-          <a href="#tienda" className="rounded-full border border-white/15 px-4 py-2 text-sm font-bold">
-            Carrito <span className="text-blue-400">0</span>
-          </a>
+
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="relative rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold transition hover:border-blue-500"
+          >
+            Carrito
+            <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 text-xs">
+              {cartCount}
+            </span>
+          </button>
+
           <a
             href={whatsappUrl}
             target="_blank"
@@ -78,6 +90,18 @@ export default function Navbar() {
                 {label}
               </a>
             ))}
+
+            <button
+              type="button"
+              onClick={() => {
+                setCartOpen(true);
+                setMenuOpen(false);
+              }}
+              className="rounded-full border border-white/15 px-5 py-3 text-left font-bold"
+            >
+              Carrito ({cartCount})
+            </button>
+
             <a href={whatsappUrl} target="_blank" rel="noreferrer" className="rounded-full bg-blue-600 px-5 py-3 text-center font-bold">
               WhatsApp
             </a>

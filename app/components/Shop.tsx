@@ -1,15 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Product } from "../../data/products";
 import { products } from "../../data/products";
 import ProductCard from "./ProductCard";
+import ProductModal from "./ProductModal";
+
+const PRODUCTS_PER_PAGE = 12;
 
 export default function Shop() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todos");
+  const [visibleCount, setVisibleCount] = useState(PRODUCTS_PER_PAGE);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const categories = useMemo(
-    () => ["Todos", ...Array.from(new Set(products.map((product) => product.category))).sort()],
+    () => [
+      "Todos",
+      ...Array.from(new Set(products.map((product) => product.category))).sort(),
+    ],
     []
   );
 
@@ -17,7 +26,9 @@ export default function Shop() {
     const normalized = query.trim().toLowerCase();
 
     return products.filter((product) => {
-      const matchesCategory = category === "Todos" || product.category === category;
+      const matchesCategory =
+        category === "Todos" || product.category === category;
+
       const matchesSearch =
         !normalized ||
         product.name.toLowerCase().includes(normalized) ||
@@ -26,6 +37,13 @@ export default function Shop() {
       return matchesCategory && matchesSearch;
     });
   }, [query, category]);
+
+  useEffect(() => {
+    setVisibleCount(PRODUCTS_PER_PAGE);
+  }, [query, category]);
+
+  const visibleProducts = filteredProducts.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredProducts.length;
 
   return (
     <>
@@ -62,14 +80,18 @@ export default function Shop() {
               <p className="text-sm font-bold uppercase tracking-[0.3em] text-blue-400">
                 Catálogo Vortex
               </p>
-              <h2 className="mt-4 text-4xl font-black md:text-5xl">Nuestros productos</h2>
+              <h2 className="mt-4 text-4xl font-black md:text-5xl">
+                Nuestros productos
+              </h2>
               <p className="mt-3 text-gray-400">
-                Mostrando {filteredProducts.length} de {products.length} productos.
+                Mostrando {visibleProducts.length} de {filteredProducts.length} productos.
               </p>
             </div>
 
             <div className="w-full md:max-w-md">
-              <label htmlFor="search" className="sr-only">Buscar productos</label>
+              <label htmlFor="search" className="sr-only">
+                Buscar productos
+              </label>
               <input
                 id="search"
                 value={query}
@@ -80,12 +102,32 @@ export default function Shop() {
             </div>
           </div>
 
-          {filteredProducts.length > 0 ? (
-            <div className="mt-10 grid gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+          {visibleProducts.length > 0 ? (
+            <>
+              <div className="mt-10 grid gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {visibleProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onViewDetails={setSelectedProduct}
+                  />
+                ))}
+              </div>
+
+              {hasMore && (
+                <div className="mt-12 text-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCount((current) => current + PRODUCTS_PER_PAGE)
+                    }
+                    className="rounded-full border border-white/15 px-8 py-4 font-black transition hover:border-blue-500 hover:text-blue-400"
+                  >
+                    Mostrar 12 productos más
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="mt-10 rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center text-gray-400">
               No encontramos productos con esa búsqueda.
@@ -93,6 +135,11 @@ export default function Shop() {
           )}
         </div>
       </section>
+
+      <ProductModal
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+      />
     </>
   );
 }
