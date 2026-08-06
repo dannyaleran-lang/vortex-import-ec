@@ -5,6 +5,7 @@ import type { Product } from "../../data/products";
 
 export type CartItem = Product & {
   quantity: number;
+  original_price?: number;
 };
 
 type StoreContextType = {
@@ -24,6 +25,16 @@ type StoreContextType = {
 
 const StoreContext = createContext<StoreContextType | null>(null);
 
+function effectivePrice(product: Product) {
+  const hasSale =
+    Boolean(product.on_sale) &&
+    product.sale_price !== null &&
+    product.sale_price !== undefined &&
+    Number(product.sale_price) < product.price;
+
+  return hasSale ? Number(product.sale_price) : product.price;
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -34,11 +45,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       const savedCart = localStorage.getItem("vortex-cart");
       const savedFavorites = localStorage.getItem("vortex-favorites");
-
       if (savedCart) setCart(JSON.parse(savedCart));
       if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
-    } catch {
-      // Si el navegador tiene datos dañados, iniciamos la tienda vacía.
     } finally {
       setReady(true);
     }
@@ -53,18 +61,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [favorites, ready]);
 
   function addToCart(product: Product) {
+    const finalPrice = effectivePrice(product);
+    const maxStock = product.stock ?? 999;
+
+    if (!product.available || maxStock <= 0) return;
+
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
 
       if (existing) {
         return current.map((item) =>
           item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+            ? {
+                ...item,
+                price: finalPrice,
+                original_price: product.price,
+                quantity: Math.min(item.quantity + 1, maxStock),
+              }
             : item
         );
       }
 
-      return [...current, { ...product, quantity: 1 }];
+      return [
+        ...current,
+        {
+          ...product,
+          price: finalPrice,
+          original_price: product.price,
+          quantity: 1,
+        },
+      ];
     });
 
     setCartOpen(true);
@@ -76,11 +102,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   function increaseQuantity(productId: string) {
     setCart((current) =>
-      current.map((item) =>
-        item.id === productId
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      )
+      current.map((item) => {
+        if (item.id !== productId) return item;
+        const maxStock = item.stock ?? 999;
+        return { ...item, quantity: Math.min(item.quantity + 1, maxStock) };
+      })
     );
   }
 
@@ -88,9 +114,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCart((current) =>
       current
         .map((item) =>
-          item.id === productId
-            ? { ...item, quantity: item.quantity - 1 }
-            : item
+          item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
         )
         .filter((item) => item.quantity > 0)
     );
@@ -127,10 +151,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
 export function useStore() {
   const context = useContext(StoreContext);
-
-  if (!context) {
-    throw new Error("useStore debe utilizarse dentro de StoreProvider");
-  }
-
+  if (!context) throw new Error("useStore debe utilizarse dentro de StoreProvider");
   return context;
 }

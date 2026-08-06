@@ -9,41 +9,50 @@ type ProductCardProps = {
   onViewDetails: (product: Product) => void;
 };
 
-export default function ProductCard({
-  product,
-  onViewDetails,
-}: ProductCardProps) {
+export default function ProductCard({ product, onViewDetails }: ProductCardProps) {
   const { addToCart, toggleFavorite, isFavorite } = useStore();
   const favorite = isFavorite(product.id);
+
+  const hasSale =
+    Boolean(product.on_sale) &&
+    product.sale_price !== null &&
+    product.sale_price !== undefined &&
+    Number(product.sale_price) < product.price;
+
+  const finalPrice = hasSale ? Number(product.sale_price) : product.price;
+  const discount =
+    hasSale && product.price > 0
+      ? Math.round(((product.price - finalPrice) / product.price) * 100)
+      : 0;
+
+  const outOfStock = !product.available || (product.stock ?? 0) <= 0;
 
   return (
     <article className="group overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] transition duration-300 hover:-translate-y-1 hover:border-blue-500/50">
       <div className="relative aspect-square overflow-hidden bg-white">
-        {product.featured && (
-          <span className="absolute left-4 top-4 z-10 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold text-white">
-            Destacado
+        {hasSale ? (
+          <span className="absolute left-4 top-4 z-10 rounded-full bg-red-600 px-3 py-1.5 text-xs font-black text-white">
+            OFERTA -{discount}%
           </span>
+        ) : (
+          product.featured && (
+            <span className="absolute left-4 top-4 z-10 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold text-white">
+              Destacado
+            </span>
+          )
         )}
 
         <button
           type="button"
           onClick={() => toggleFavorite(product.id)}
-          aria-label="Agregar a favoritos"
-          className={`absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition ${
-            favorite
-              ? "border-red-500 bg-red-500 text-white"
-              : "border-black/10 bg-white text-black hover:text-red-500"
+          className={`absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border ${
+            favorite ? "border-red-500 bg-red-500 text-white" : "border-black/10 bg-white text-black"
           }`}
         >
           {favorite ? "♥" : "♡"}
         </button>
 
-        <button
-          type="button"
-          onClick={() => onViewDetails(product)}
-          className="h-full w-full"
-          aria-label={`Ver detalles de ${product.name}`}
-        >
+        <button type="button" onClick={() => onViewDetails(product)} className="h-full w-full">
           <ProductImage
             image={product.image}
             name={product.name}
@@ -70,15 +79,21 @@ export default function ProductCard({
         </p>
 
         <div className="mt-5 flex items-center justify-between gap-3">
-          <p className="text-3xl font-black">${product.price.toFixed(2)}</p>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-bold ${
-              product.available
-                ? "bg-green-500/15 text-green-400"
-                : "bg-red-500/15 text-red-400"
-            }`}
-          >
-            {product.available ? "Disponible" : "Agotado"}
+          <div>
+            {hasSale ? (
+              <>
+                <p className="text-sm text-gray-500 line-through">${product.price.toFixed(2)}</p>
+                <p className="text-3xl font-black text-red-500">${finalPrice.toFixed(2)}</p>
+              </>
+            ) : (
+              <p className="text-3xl font-black">${product.price.toFixed(2)}</p>
+            )}
+          </div>
+
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+            outOfStock ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"
+          }`}>
+            {outOfStock ? "Agotado" : "Disponible"}
           </span>
         </div>
 
@@ -86,16 +101,16 @@ export default function ProductCard({
           <button
             type="button"
             onClick={() => addToCart(product)}
-            disabled={!product.available}
-            className="rounded-full bg-blue-600 px-5 py-3 text-sm font-bold transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+            disabled={outOfStock}
+            className="rounded-full bg-blue-600 px-5 py-3 text-sm font-bold disabled:bg-gray-700"
           >
-            Agregar al carrito
+            {outOfStock ? "Producto agotado" : "Agregar al carrito"}
           </button>
 
           <button
             type="button"
             onClick={() => onViewDetails(product)}
-            className="rounded-full border border-white/15 px-5 py-3 text-sm font-bold transition hover:border-blue-500 hover:text-blue-400"
+            className="rounded-full border border-white/15 px-5 py-3 text-sm font-bold"
           >
             Ver detalles
           </button>

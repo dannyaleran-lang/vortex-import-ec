@@ -13,7 +13,18 @@ import { products as backupProducts } from "../../data/products";
 import { supabase } from "../../lib/supabase";
 
 type ProductOverride = Partial<
-  Pick<Product, "price" | "available" | "featured" | "name" | "category">
+  Pick<
+    Product,
+    | "price"
+    | "available"
+    | "featured"
+    | "name"
+    | "category"
+    | "description"
+    | "stock"
+    | "sale_price"
+    | "on_sale"
+  >
 >;
 
 type CatalogContextType = {
@@ -78,9 +89,24 @@ export function CatalogProvider({
 
     const { data, error: supabaseError } = await supabase
       .from("products")
-      .select(
-        "id, name, code, price, category, image, available, featured"
-      )
+      .select(`
+  id,
+  name,
+  code,
+  price,
+  category,
+  image,
+  available,
+  featured,
+  description,
+  stock,
+  sale_price,
+on_sale,
+  product_images (
+    image_url,
+    position
+  )
+`)
       .order("id", { ascending: true });
 
     if (supabaseError) {
@@ -99,21 +125,57 @@ export function CatalogProvider({
     }
 
     const formattedProducts: Product[] = (data ?? []).map(
-      (product) => ({
-        id: String(product.id),
-        name: String(product.name),
-        code: product.code ? String(product.code) : "",
-        price: Number(product.price),
-        category: String(product.category),
-        image: String(product.image).startsWith("http")
-  ? String(product.image)
-  : product.code
-    ? `/products/${String(product.code).trim()}.png`
-    : String(product.image),
-        available: Boolean(product.available),
-        featured: Boolean(product.featured),
-      })
-    );
+  (product) => ({
+    id: String(product.id),
+
+    name: String(product.name),
+
+    code: product.code
+      ? String(product.code)
+      : "",
+
+    price: Number(product.price),
+
+    category: String(product.category),
+
+    image: String(product.image).startsWith("http")
+      ? String(product.image)
+      : product.code
+        ? `/products/${String(product.code).trim()}.png`
+        : String(product.image),
+
+    available: Boolean(product.available),
+
+    featured: Boolean(product.featured),
+
+    description: product.description
+      ? String(product.description)
+      : "",
+
+    stock: Number(product.stock ?? 0),
+
+    sale_price:
+  product.sale_price !== null && product.sale_price !== undefined
+    ? Number(product.sale_price)
+    : null,
+
+on_sale: Boolean(product.on_sale),
+
+    images: Array.isArray(product.product_images)
+      ? product.product_images
+          .sort(
+            (
+              a: { position: number },
+              b: { position: number }
+            ) => a.position - b.position
+          )
+          .map(
+            (item: { image_url: string }) =>
+              String(item.image_url)
+          )
+      : [],
+  })
+);
 
     if (formattedProducts.length === 0) {
       setError(
@@ -164,6 +226,7 @@ export function CatalogProvider({
 
   function resetCatalog() {
     setOverrides({});
+    localStorage.removeItem(OVERRIDES_KEY);
   }
 
   return (

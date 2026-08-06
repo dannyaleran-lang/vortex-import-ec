@@ -7,6 +7,11 @@ export type Product = {
   image: string;
   available: boolean;
   featured: boolean;
+  description?: string;
+stock?: number;
+images?: string[]; 
+sale_price?: number | null;
+on_sale?: boolean;
 };
 
 export const products: Product[] = [

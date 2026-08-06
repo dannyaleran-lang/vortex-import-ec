@@ -13,30 +13,33 @@ import { supabase } from "../../lib/supabase";
 import { useCatalog } from "../context/CatalogContext";
 import ProductImage from "../components/ProductImage";
 
-type Draft = {
+type ProductDraft = {
   name: string;
   price: string;
+  salePrice: string;
   category: string;
+  description: string;
+  stock: string;
   available: boolean;
   featured: boolean;
+  onSale: boolean;
 };
 
-type NewProduct = {
-  name: string;
+type NewProductDraft = ProductDraft & {
   code: string;
-  price: string;
-  category: string;
-  available: boolean;
-  featured: boolean;
 };
 
-const EMPTY_PRODUCT: NewProduct = {
+const EMPTY_NEW_PRODUCT: NewProductDraft = {
   name: "",
   code: "",
   price: "",
+  salePrice: "",
   category: "Otros",
+  description: "",
+  stock: "0",
   available: true,
   featured: false,
+  onSale: false,
 };
 
 function makeProductId() {
@@ -77,15 +80,21 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState("");
 
   const [query, setQuery] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [drafts, setDrafts] = useState<Record<string, ProductDraft>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [newProduct, setNewProduct] =
-    useState<NewProduct>(EMPTY_PRODUCT);
-  const [newImage, setNewImage] = useState<File | null>(null);
-  const [newImagePreview, setNewImagePreview] = useState("");
+    useState<NewProductDraft>(EMPTY_NEW_PRODUCT);
+  const [newMainImage, setNewMainImage] = useState<File | null>(null);
+  const [newGalleryImages, setNewGalleryImages] = useState<File[]>([]);
+  const [mainPreview, setMainPreview] = useState("");
+  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+
+  const [galleryProductId, setGalleryProductId] = useState("");
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
 
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] =
@@ -108,15 +117,23 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    const nextDrafts: Record<string, Draft> = {};
+    const nextDrafts: Record<string, ProductDraft> = {};
 
     for (const product of products) {
       nextDrafts[product.id] = {
         name: product.name,
         price: product.price.toFixed(2),
+        salePrice:
+          product.sale_price !== null &&
+          product.sale_price !== undefined
+            ? Number(product.sale_price).toFixed(2)
+            : "",
         category: product.category,
+        description: product.description ?? "",
+        stock: String(product.stock ?? 0),
         available: product.available,
         featured: product.featured,
+        onSale: Boolean(product.on_sale),
       };
     }
 
@@ -125,9 +142,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     return () => {
-      if (newImagePreview) URL.revokeObjectURL(newImagePreview);
+      if (mainPreview) URL.revokeObjectURL(mainPreview);
+      for (const preview of galleryPreviews) {
+        URL.revokeObjectURL(preview);
+      }
     };
-  }, [newImagePreview]);
+  }, [mainPreview, galleryPreviews]);
 
   const filteredProducts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -141,6 +161,24 @@ export default function AdminPage() {
         product.category.toLowerCase().includes(normalized)
     );
   }, [products, query]);
+
+  function showMessage(text: string, type: "success" | "error") {
+    setMessage(text);
+    setMessageType(type);
+  }
+
+  function changeDraft(
+    productId: string,
+    changes: Partial<ProductDraft>
+  ) {
+    setDrafts((current) => ({
+      ...current,
+      [productId]: {
+        ...current[productId],
+        ...changes,
+      },
+    }));
+  }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -161,33 +199,51 @@ export default function AdminPage() {
     await supabase.auth.signOut();
   }
 
-  function changeDraft(productId: string, changes: Partial<Draft>) {
-    setDrafts((current) => ({
-      ...current,
-      [productId]: {
-        ...current[productId],
-        ...changes,
-      },
-    }));
-  }
-
-  function showMessage(
-    text: string,
-    type: "success" | "error"
-  ) {
-    setMessage(text);
-    setMessageType(type);
-  }
-
-  function handleNewImage(event: ChangeEvent<HTMLInputElement>) {
+  function handleMainImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
 
-    if (newImagePreview) {
-      URL.revokeObjectURL(newImagePreview);
+    if (mainPreview) URL.revokeObjectURL(mainPreview);
+
+    setNewMainImage(file);
+    setMainPreview(file ? URL.createObjectURL(file) : "");
+  }
+
+  function handleNewGalleryImages(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const files = Array.from(event.target.files ?? []).slice(0, 5);
+
+    for (const preview of galleryPreviews) {
+      URL.revokeObjectURL(preview);
     }
 
-    setNewImage(file);
-    setNewImagePreview(file ? URL.createObjectURL(file) : "");
+    setNewGalleryImages(files);
+    setGalleryPreviews(files.map((file) => URL.createObjectURL(file)));
+  }
+
+  async function uploadImage(file: File) {
+    const storagePath = sanitizeFileName(file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from("product-images")
+      .upload(storagePath, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+
+    const { data } = supabase.storage
+      .from("product-images")
+      .getPublicUrl(storagePath);
+
+    return {
+      url: data.publicUrl,
+      storagePath,
+    };
   }
 
   async function createProduct(event: FormEvent<HTMLFormElement>) {
@@ -196,18 +252,44 @@ export default function AdminPage() {
     const name = newProduct.name.trim();
     const code = newProduct.code.trim();
     const category = newProduct.category.trim();
+    const description = newProduct.description.trim();
     const price = Number(newProduct.price);
+    const stock = Number(newProduct.stock);
+    const salePrice = newProduct.salePrice
+      ? Number(newProduct.salePrice)
+      : null;
 
-    if (!name || !category || Number.isNaN(price) || price < 0) {
+    if (
+      !name ||
+      !category ||
+      Number.isNaN(price) ||
+      price < 0 ||
+      !Number.isInteger(stock) ||
+      stock < 0
+    ) {
       showMessage(
-        "Completa correctamente el nombre, precio y categoría.",
+        "Revisa nombre, categoría, precio y stock.",
         "error"
       );
       return;
     }
 
-    if (!newImage) {
-      showMessage("Selecciona una imagen para el producto.", "error");
+    if (
+      newProduct.onSale &&
+      (salePrice === null ||
+        Number.isNaN(salePrice) ||
+        salePrice < 0 ||
+        salePrice >= price)
+    ) {
+      showMessage(
+        "El precio de oferta debe ser menor al precio normal.",
+        "error"
+      );
+      return;
+    }
+
+    if (!newMainImage) {
+      showMessage("Selecciona una imagen principal.", "error");
       return;
     }
 
@@ -215,87 +297,127 @@ export default function AdminPage() {
     setMessage("");
     setMessageType("");
 
-    const storagePath = sanitizeFileName(newImage.name);
+    const uploadedPaths: string[] = [];
 
-    const { error: uploadError } = await supabase.storage
-      .from("product-images")
-      .upload(storagePath, newImage, {
-        cacheControl: "3600",
-        contentType: newImage.type,
-        upsert: false,
-      });
+    try {
+      const mainUpload = await uploadImage(newMainImage);
+      uploadedPaths.push(mainUpload.storagePath);
 
-    if (uploadError) {
+      const productId = makeProductId();
+
+      const { error: insertError } = await supabase
+        .from("products")
+        .insert({
+          id: productId,
+          name,
+          code,
+          price,
+          sale_price: newProduct.onSale ? salePrice : null,
+          on_sale: newProduct.onSale,
+          category,
+          description,
+          stock,
+          image: mainUpload.url,
+          available: stock > 0 && newProduct.available,
+          featured: newProduct.featured,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      if (newGalleryImages.length > 0) {
+        const galleryRows = [];
+
+        for (let index = 0; index < newGalleryImages.length; index++) {
+          const uploaded = await uploadImage(newGalleryImages[index]);
+          uploadedPaths.push(uploaded.storagePath);
+
+          galleryRows.push({
+            product_id: productId,
+            image_url: uploaded.url,
+            position: index,
+          });
+        }
+
+        const { error: galleryError } = await supabase
+          .from("product_images")
+          .insert(galleryRows);
+
+        if (galleryError) {
+          throw new Error(galleryError.message);
+        }
+      }
+
+      setNewProduct(EMPTY_NEW_PRODUCT);
+      setNewMainImage(null);
+      setNewGalleryImages([]);
+
+      if (mainPreview) URL.revokeObjectURL(mainPreview);
+      for (const preview of galleryPreviews) {
+        URL.revokeObjectURL(preview);
+      }
+
+      setMainPreview("");
+      setGalleryPreviews([]);
+
+      await reloadProducts();
+      showMessage("Producto creado correctamente.", "success");
+    } catch (creationError) {
+      if (uploadedPaths.length > 0) {
+        await supabase.storage
+          .from("product-images")
+          .remove(uploadedPaths);
+      }
+
       showMessage(
-        `No se pudo subir la imagen: ${uploadError.message}`,
+        `No se pudo crear el producto: ${
+          creationError instanceof Error
+            ? creationError.message
+            : "Error desconocido"
+        }`,
         "error"
       );
+    } finally {
       setCreating(false);
-      return;
     }
-
-    const { data: publicUrlData } = supabase.storage
-      .from("product-images")
-      .getPublicUrl(storagePath);
-
-    const productId = makeProductId();
-
-    const { error: insertError } = await supabase
-      .from("products")
-      .insert({
-        id: productId,
-        name,
-        code,
-        price,
-        category,
-        image: publicUrlData.publicUrl,
-        available: newProduct.available,
-        featured: newProduct.featured,
-        updated_at: new Date().toISOString(),
-      });
-
-    if (insertError) {
-      await supabase.storage
-        .from("product-images")
-        .remove([storagePath]);
-
-      showMessage(
-        `No se pudo crear el producto: ${insertError.message}`,
-        "error"
-      );
-      setCreating(false);
-      return;
-    }
-
-    setNewProduct(EMPTY_PRODUCT);
-    setNewImage(null);
-
-    if (newImagePreview) {
-      URL.revokeObjectURL(newImagePreview);
-    }
-
-    setNewImagePreview("");
-    await reloadProducts();
-
-    showMessage("Producto creado correctamente.", "success");
-    setCreating(false);
   }
 
   async function saveProduct(productId: string) {
     const draft = drafts[productId];
-
     if (!draft) return;
 
     const price = Number(draft.price);
+    const stock = Number(draft.stock);
+    const salePrice = draft.salePrice
+      ? Number(draft.salePrice)
+      : null;
 
     if (
       !draft.name.trim() ||
       !draft.category.trim() ||
       Number.isNaN(price) ||
-      price < 0
+      price < 0 ||
+      !Number.isInteger(stock) ||
+      stock < 0
     ) {
       showMessage(
-        "Revisa el nombre, la categoría y el precio.",
+        "Revisa nombre, categoría, precio y stock.",
+        "error"
+      );
+      return;
+    }
+
+    if (
+      draft.onSale &&
+      (salePrice === null ||
+        Number.isNaN(salePrice) ||
+        salePrice < 0 ||
+        salePrice >= price)
+    ) {
+      showMessage(
+        "El precio de oferta debe ser menor al precio normal.",
         "error"
       );
       return;
@@ -310,8 +432,12 @@ export default function AdminPage() {
       .update({
         name: draft.name.trim(),
         price,
+        sale_price: draft.onSale ? salePrice : null,
+        on_sale: draft.onSale,
         category: draft.category.trim(),
-        available: draft.available,
+        description: draft.description.trim(),
+        stock,
+        available: stock > 0 && draft.available,
         featured: draft.featured,
         updated_at: new Date().toISOString(),
       })
@@ -331,11 +457,14 @@ export default function AdminPage() {
     setSavingId(null);
   }
 
-  async function deleteProduct(productId: string, imageUrl: string) {
+  async function deleteProduct(
+    productId: string,
+    imageUrl: string
+  ) {
     const product = products.find((item) => item.id === productId);
 
     const confirmed = window.confirm(
-      `¿Eliminar "${product?.name ?? "este producto"}"? Esta acción no se puede deshacer.`
+      `¿Eliminar "${product?.name ?? "este producto"}"?`
     );
 
     if (!confirmed) return;
@@ -343,6 +472,11 @@ export default function AdminPage() {
     setDeletingId(productId);
     setMessage("");
     setMessageType("");
+
+    const { data: galleryRows } = await supabase
+      .from("product_images")
+      .select("image_url")
+      .eq("product_id", productId);
 
     const { error: deleteError } = await supabase
       .from("products")
@@ -358,24 +492,88 @@ export default function AdminPage() {
       return;
     }
 
-    const storagePath = getStoragePathFromPublicUrl(imageUrl);
+    const storagePaths = [
+      imageUrl,
+      ...(galleryRows ?? []).map((row) =>
+        String(row.image_url)
+      ),
+    ]
+      .map(getStoragePathFromPublicUrl)
+      .filter((value): value is string => Boolean(value));
 
-    if (storagePath) {
-      const { error: storageError } = await supabase.storage
+    if (storagePaths.length > 0) {
+      await supabase.storage
         .from("product-images")
-        .remove([storagePath]);
-
-      if (storageError) {
-        console.warn(
-          "El producto se eliminó, pero no se pudo borrar su imagen:",
-          storageError
-        );
-      }
+        .remove(storagePaths);
     }
 
     await reloadProducts();
     showMessage("Producto eliminado correctamente.", "success");
     setDeletingId(null);
+  }
+
+  async function addGalleryImages() {
+    if (!galleryProductId || galleryFiles.length === 0) {
+      showMessage(
+        "Selecciona un producto y al menos una imagen.",
+        "error"
+      );
+      return;
+    }
+
+    setUploadingGallery(true);
+    setMessage("");
+    setMessageType("");
+
+    try {
+      const { count } = await supabase
+        .from("product_images")
+        .select("*", {
+          count: "exact",
+          head: true,
+        })
+        .eq("product_id", galleryProductId);
+
+      const startPosition = count ?? 0;
+      const rows = [];
+
+      for (let index = 0; index < galleryFiles.length; index++) {
+        const uploaded = await uploadImage(galleryFiles[index]);
+
+        rows.push({
+          product_id: galleryProductId,
+          image_url: uploaded.url,
+          position: startPosition + index,
+        });
+      }
+
+      const { error: galleryError } = await supabase
+        .from("product_images")
+        .insert(rows);
+
+      if (galleryError) {
+        throw new Error(galleryError.message);
+      }
+
+      setGalleryFiles([]);
+      setGalleryProductId("");
+      await reloadProducts();
+      showMessage(
+        "Imágenes adicionales agregadas correctamente.",
+        "success"
+      );
+    } catch (galleryError) {
+      showMessage(
+        `No se pudieron agregar las imágenes: ${
+          galleryError instanceof Error
+            ? galleryError.message
+            : "Error desconocido"
+        }`,
+        "error"
+      );
+    } finally {
+      setUploadingGallery(false);
+    }
   }
 
   if (checkingSession) {
@@ -401,10 +599,6 @@ export default function AdminPage() {
             Acceso administrativo
           </h1>
 
-          <p className="mt-3 text-sm leading-6 text-gray-400">
-            Inicia sesión con tu usuario administrador de Supabase.
-          </p>
-
           <label className="mt-7 grid gap-2 text-sm font-bold">
             Correo
             <input
@@ -412,7 +606,6 @@ export default function AdminPage() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
               className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal outline-none focus:border-blue-500"
             />
           </label>
@@ -424,7 +617,6 @@ export default function AdminPage() {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
               className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal outline-none focus:border-blue-500"
             />
           </label>
@@ -437,17 +629,10 @@ export default function AdminPage() {
 
           <button
             type="submit"
-            className="mt-6 w-full rounded-full bg-blue-600 px-5 py-4 font-black transition hover:bg-blue-500"
+            className="mt-6 w-full rounded-full bg-blue-600 px-5 py-4 font-black"
           >
             Iniciar sesión
           </button>
-
-          <a
-            href="/"
-            className="mt-3 block rounded-full border border-white/15 px-5 py-4 text-center font-bold"
-          >
-            Volver a la tienda
-          </a>
         </form>
       </main>
     );
@@ -459,13 +644,13 @@ export default function AdminPage() {
         <header className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.25em] text-blue-400">
-              Panel administrativo V2
+              Panel administrativo V4
             </p>
             <h1 className="mt-3 text-4xl font-black md:text-5xl">
-              Productos Vortex
+              Gestión completa
             </h1>
             <p className="mt-3 text-gray-400">
-              Crea, edita y elimina productos directamente en Supabase.
+              Productos, imágenes, stock y ofertas.
             </p>
           </div>
 
@@ -476,7 +661,6 @@ export default function AdminPage() {
             >
               Ver tienda
             </a>
-
             <button
               type="button"
               onClick={handleLogout}
@@ -506,50 +690,65 @@ export default function AdminPage() {
         )}
 
         <section className="mt-10 rounded-[2rem] border border-blue-500/25 bg-blue-500/[0.06] p-6 md:p-8">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-400">
-              Nuevo producto
-            </p>
-            <h2 className="mt-2 text-3xl font-black">
-              Agregar al catálogo
-            </h2>
-          </div>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-400">
+            Nuevo producto
+          </p>
+          <h2 className="mt-2 text-3xl font-black">
+            Agregar al catálogo
+          </h2>
 
           <form
             onSubmit={createProduct}
-            className="mt-7 grid gap-6 lg:grid-cols-[240px_1fr]"
+            className="mt-7 grid gap-6 lg:grid-cols-[260px_1fr]"
           >
             <div>
               <div className="flex aspect-square items-center justify-center overflow-hidden rounded-3xl bg-white">
-                {newImagePreview ? (
+                {mainPreview ? (
                   <img
-                    src={newImagePreview}
+                    src={mainPreview}
                     alt="Vista previa"
                     className="h-full w-full object-contain p-4"
                   />
                 ) : (
-                  <div className="p-6 text-center text-gray-500">
-                    <span className="text-5xl">📷</span>
-                    <p className="mt-3 text-sm font-bold">
-                      Vista previa
-                    </p>
-                  </div>
+                  <p className="text-sm font-bold text-gray-500">
+                    Imagen principal
+                  </p>
                 )}
               </div>
 
-              <label className="mt-4 block cursor-pointer rounded-full border border-white/15 px-5 py-3 text-center text-sm font-bold transition hover:border-blue-500">
-                Seleccionar imagen
+              <label className="mt-4 block cursor-pointer rounded-full border border-white/15 px-5 py-3 text-center text-sm font-bold">
+                Seleccionar principal
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  onChange={handleNewImage}
+                  onChange={handleMainImage}
                   className="hidden"
                 />
               </label>
 
-              <p className="mt-2 text-center text-xs text-gray-500">
-                PNG, JPEG o WebP. Máximo 3 MB.
-              </p>
+              <label className="mt-3 block cursor-pointer rounded-full border border-white/15 px-5 py-3 text-center text-sm font-bold">
+                Seleccionar galería
+                <input
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleNewGalleryImages}
+                  className="hidden"
+                />
+              </label>
+
+              {galleryPreviews.length > 0 && (
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {galleryPreviews.map((preview) => (
+                    <img
+                      key={preview}
+                      src={preview}
+                      alt="Galería"
+                      className="aspect-square rounded-xl bg-white object-contain p-1"
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid gap-5 md:grid-cols-2">
@@ -564,7 +763,7 @@ export default function AdminPage() {
                       name: event.target.value,
                     }))
                   }
-                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal outline-none focus:border-blue-500"
+                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal"
                 />
               </label>
 
@@ -578,13 +777,12 @@ export default function AdminPage() {
                       code: event.target.value,
                     }))
                   }
-                  placeholder="Ej. VTX-001"
-                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal outline-none focus:border-blue-500"
+                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal"
                 />
               </label>
 
               <label className="grid gap-2 text-sm font-bold">
-                Precio
+                Precio normal
                 <input
                   type="number"
                   min="0"
@@ -597,7 +795,43 @@ export default function AdminPage() {
                       price: event.target.value,
                     }))
                   }
-                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal outline-none focus:border-blue-500"
+                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-bold">
+                Precio de oferta
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={newProduct.salePrice}
+                  onChange={(event) =>
+                    setNewProduct((current) => ({
+                      ...current,
+                      salePrice: event.target.value,
+                    }))
+                  }
+                  disabled={!newProduct.onSale}
+                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal disabled:opacity-40"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-bold">
+                Stock
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  value={newProduct.stock}
+                  onChange={(event) =>
+                    setNewProduct((current) => ({
+                      ...current,
+                      stock: event.target.value,
+                    }))
+                  }
+                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal"
                 />
               </label>
 
@@ -612,22 +846,37 @@ export default function AdminPage() {
                       category: event.target.value,
                     }))
                   }
-                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal outline-none focus:border-blue-500"
+                  className="rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-bold md:col-span-2">
+                Descripción
+                <textarea
+                  rows={5}
+                  value={newProduct.description}
+                  onChange={(event) =>
+                    setNewProduct((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  className="resize-none rounded-2xl border border-white/15 bg-black px-4 py-3 font-normal"
                 />
               </label>
 
               <label className="flex items-center gap-3 rounded-2xl border border-white/10 p-4 text-sm font-bold">
                 <input
                   type="checkbox"
-                  checked={newProduct.available}
+                  checked={newProduct.onSale}
                   onChange={(event) =>
                     setNewProduct((current) => ({
                       ...current,
-                      available: event.target.checked,
+                      onSale: event.target.checked,
                     }))
                   }
                 />
-                Disponible
+                Producto en oferta
               </label>
 
               <label className="flex items-center gap-3 rounded-2xl border border-white/10 p-4 text-sm font-bold">
@@ -641,114 +890,168 @@ export default function AdminPage() {
                     }))
                   }
                 />
-                Producto destacado
+                Destacado
               </label>
 
               <button
                 type="submit"
                 disabled={creating}
-                className="rounded-full bg-blue-600 px-6 py-4 font-black transition hover:bg-blue-500 disabled:bg-gray-700 md:col-span-2"
+                className="rounded-full bg-blue-600 px-6 py-4 font-black md:col-span-2 disabled:bg-gray-700"
               >
-                {creating ? "Creando producto..." : "Crear producto"}
+                {creating ? "Creando..." : "Crear producto"}
               </button>
             </div>
           </form>
         </section>
 
-        <section className="mt-12">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-400">
-              Catálogo actual
-            </p>
-            <h2 className="mt-2 text-3xl font-black">
-              Editar productos
-            </h2>
+        <section className="mt-10 rounded-[2rem] border border-white/10 bg-white/[0.03] p-6">
+          <h2 className="text-2xl font-black">
+            Agregar imágenes a un producto existente
+          </h2>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+            <select
+              value={galleryProductId}
+              onChange={(event) =>
+                setGalleryProductId(event.target.value)
+              }
+              className="rounded-2xl border border-white/15 bg-black px-4 py-3"
+            >
+              <option value="">Selecciona un producto</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name} — {product.code || product.id}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) =>
+                setGalleryFiles(
+                  Array.from(event.target.files ?? []).slice(0, 5)
+                )
+              }
+              className="rounded-2xl border border-white/15 bg-black px-4 py-3"
+            />
+
+            <button
+              type="button"
+              onClick={addGalleryImages}
+              disabled={uploadingGallery}
+              className="rounded-full bg-blue-600 px-6 py-3 font-black disabled:bg-gray-700"
+            >
+              {uploadingGallery ? "Subiendo..." : "Subir imágenes"}
+            </button>
           </div>
+        </section>
+
+        <section className="mt-12">
+          <h2 className="text-3xl font-black">
+            Editar productos
+          </h2>
 
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar por nombre, código o categoría..."
-            className="mt-6 w-full rounded-full border border-white/15 bg-white/[0.04] px-5 py-4 outline-none focus:border-blue-500"
+            className="mt-6 w-full rounded-full border border-white/15 bg-white/[0.04] px-5 py-4 outline-none"
           />
 
-          <p className="mt-5 text-sm text-gray-400">
-            Mostrando {filteredProducts.length} productos.
-          </p>
-
           {loading ? (
-            <p className="mt-8 text-gray-400">Cargando productos...</p>
+            <p className="mt-8 text-gray-400">
+              Cargando productos...
+            </p>
           ) : (
             <div className="mt-6 space-y-4">
               {filteredProducts.map((product) => {
                 const draft = drafts[product.id];
-
                 if (!draft) return null;
 
                 return (
                   <article
                     key={product.id}
-                    className="grid gap-5 rounded-3xl border border-white/10 bg-white/[0.035] p-5 xl:grid-cols-[100px_1.4fr_140px_180px_150px_220px]"
+                    className="grid gap-5 rounded-3xl border border-white/10 bg-white/[0.035] p-5 xl:grid-cols-[100px_1.3fr_120px_120px_160px_220px]"
                   >
                     <div className="h-24 overflow-hidden rounded-2xl bg-white">
                       <ProductImage
                         image={product.image}
                         name={product.name}
                         className="h-full w-full object-contain p-2"
-                        fallbackClassName="h-full w-full"
                       />
                     </div>
 
                     <div className="grid gap-3">
-                      <label className="grid gap-1 text-xs font-bold text-gray-400">
-                        Nombre
-                        <input
-                          value={draft.name}
-                          onChange={(event) =>
-                            changeDraft(product.id, {
-                              name: event.target.value,
-                            })
-                          }
-                          className="rounded-xl border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                        />
-                      </label>
+                      <input
+                        value={draft.name}
+                        onChange={(event) =>
+                          changeDraft(product.id, {
+                            name: event.target.value,
+                          })
+                        }
+                        className="rounded-xl border border-white/10 bg-black px-3 py-2"
+                      />
 
-                      <p className="text-xs text-gray-500">
-                        Código: {product.code || "Sin código"}
-                      </p>
+                      <textarea
+                        rows={3}
+                        value={draft.description}
+                        onChange={(event) =>
+                          changeDraft(product.id, {
+                            description: event.target.value,
+                          })
+                        }
+                        placeholder="Descripción"
+                        className="resize-none rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+                      />
                     </div>
 
-                    <label className="grid content-start gap-1 text-xs font-bold text-gray-400">
-                      Precio
+                    <div className="grid gap-2">
                       <input
                         type="number"
-                        step="0.01"
                         min="0"
+                        step="0.01"
                         value={draft.price}
                         onChange={(event) =>
                           changeDraft(product.id, {
                             price: event.target.value,
                           })
                         }
-                        className="rounded-xl border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                        className="rounded-xl border border-white/10 bg-black px-3 py-2"
                       />
-                    </label>
 
-                    <label className="grid content-start gap-1 text-xs font-bold text-gray-400">
-                      Categoría
                       <input
-                        value={draft.category}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={draft.salePrice}
                         onChange={(event) =>
                           changeDraft(product.id, {
-                            category: event.target.value,
+                            salePrice: event.target.value,
                           })
                         }
-                        className="rounded-xl border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                        disabled={!draft.onSale}
+                        placeholder="Oferta"
+                        className="rounded-xl border border-white/10 bg-black px-3 py-2 disabled:opacity-40"
                       />
-                    </label>
+                    </div>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={draft.stock}
+                      onChange={(event) =>
+                        changeDraft(product.id, {
+                          stock: event.target.value,
+                        })
+                      }
+                      className="h-fit rounded-xl border border-white/10 bg-black px-3 py-2"
+                    />
 
                     <div className="grid content-start gap-3">
-                      <label className="flex items-center gap-2 text-sm font-bold">
+                      <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={draft.available}
@@ -761,7 +1064,7 @@ export default function AdminPage() {
                         Disponible
                       </label>
 
-                      <label className="flex items-center gap-2 text-sm font-bold">
+                      <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={draft.featured}
@@ -773,6 +1076,19 @@ export default function AdminPage() {
                         />
                         Destacado
                       </label>
+
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={draft.onSale}
+                          onChange={(event) =>
+                            changeDraft(product.id, {
+                              onSale: event.target.checked,
+                            })
+                          }
+                        />
+                        En oferta
+                      </label>
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -780,7 +1096,7 @@ export default function AdminPage() {
                         type="button"
                         onClick={() => saveProduct(product.id)}
                         disabled={savingId === product.id}
-                        className="rounded-full bg-blue-600 px-4 py-3 text-sm font-black transition hover:bg-blue-500 disabled:bg-gray-700"
+                        className="rounded-full bg-blue-600 px-4 py-3 text-sm font-black disabled:bg-gray-700"
                       >
                         {savingId === product.id
                           ? "Guardando..."
@@ -793,11 +1109,11 @@ export default function AdminPage() {
                           deleteProduct(product.id, product.image)
                         }
                         disabled={deletingId === product.id}
-                        className="rounded-full border border-red-500/40 px-4 py-3 text-sm font-black text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
+                        className="rounded-full border border-red-500/40 px-4 py-3 text-sm font-black text-red-400"
                       >
                         {deletingId === product.id
                           ? "Eliminando..."
-                          : "Eliminar producto"}
+                          : "Eliminar"}
                       </button>
                     </div>
                   </article>
