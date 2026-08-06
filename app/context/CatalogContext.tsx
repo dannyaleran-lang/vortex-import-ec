@@ -105,9 +105,11 @@ export function CatalogProvider({
         code: product.code ? String(product.code) : "",
         price: Number(product.price),
         category: String(product.category),
-        image: product.code
-  ? `/products/${String(product.code).trim()}.png`
-  : String(product.image),
+        image: String(product.image).startsWith("http")
+  ? String(product.image)
+  : product.code
+    ? `/products/${String(product.code).trim()}.png`
+    : String(product.image),
         available: Boolean(product.available),
         featured: Boolean(product.featured),
       })
