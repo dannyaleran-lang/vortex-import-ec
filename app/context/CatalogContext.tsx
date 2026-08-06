@@ -1,7 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { products as baseProducts, type Product } from "../../data/products";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import type { Product } from "../../data/products";
+import { products as backupProducts } from "../../data/products";
+import { supabase } from "../../lib/supabase";
 
 type ProductOverride = Partial<
   Pick<Product, "price" | "available" | "featured" | "name" | "category">
@@ -9,23 +18,44 @@ type ProductOverride = Partial<
 
 type CatalogContextType = {
   products: Product[];
-  updateProduct: (productId: string, changes: ProductOverride) => void;
+  loading: boolean;
+  error: string | null;
+  updateProduct: (
+    productId: string,
+    changes: ProductOverride
+  ) => void;
   resetProduct: (productId: string) => void;
   resetCatalog: () => void;
+  reloadProducts: () => Promise<void>;
 };
 
 const CatalogContext = createContext<CatalogContextType | null>(null);
 
-const STORAGE_KEY = "vortex-product-overrides";
+const OVERRIDES_KEY = "vortex-product-overrides";
 
-export function CatalogProvider({ children }: { children: React.ReactNode }) {
-  const [overrides, setOverrides] = useState<Record<string, ProductOverride>>({});
+export function CatalogProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [databaseProducts, setDatabaseProducts] =
+    useState<Product[]>(backupProducts);
+
+  const [overrides, setOverrides] = useState<
+    Record<string, ProductOverride>
+  >({});
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setOverrides(JSON.parse(saved));
+      const saved = localStorage.getItem(OVERRIDES_KEY);
+
+      if (saved) {
+        setOverrides(JSON.parse(saved));
+      }
     } catch {
       setOverrides({});
     } finally {
@@ -35,20 +65,84 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (ready) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
+      localStorage.setItem(
+        OVERRIDES_KEY,
+        JSON.stringify(overrides)
+      );
     }
   }, [overrides, ready]);
 
+  async function reloadProducts() {
+    setLoading(true);
+    setError(null);
+
+    const { data, error: supabaseError } = await supabase
+      .from("products")
+      .select(
+        "id, name, code, price, category, image, available, featured"
+      )
+      .order("id", { ascending: true });
+
+    if (supabaseError) {
+      console.error(
+        "Error Supabase:",
+        JSON.stringify(supabaseError, null, 2)
+      );
+
+      setError(
+        "No se pudo conectar con la base de datos. Se está usando el catálogo de respaldo."
+      );
+
+      setDatabaseProducts(backupProducts);
+      setLoading(false);
+      return;
+    }
+
+    const formattedProducts: Product[] = (data ?? []).map(
+      (product) => ({
+        id: String(product.id),
+        name: String(product.name),
+        code: product.code ? String(product.code) : "",
+        price: Number(product.price),
+        category: String(product.category),
+        image: product.code
+  ? `/products/${String(product.code).trim()}.png`
+  : String(product.image),
+        available: Boolean(product.available),
+        featured: Boolean(product.featured),
+      })
+    );
+
+    if (formattedProducts.length === 0) {
+      setError(
+        "La tabla de Supabase está vacía. Se está usando el catálogo de respaldo."
+      );
+
+      setDatabaseProducts(backupProducts);
+    } else {
+      setDatabaseProducts(formattedProducts);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void reloadProducts();
+  }, []);
+
   const products = useMemo(
     () =>
-      baseProducts.map((product) => ({
+      databaseProducts.map((product) => ({
         ...product,
         ...(overrides[product.id] ?? {}),
       })),
-    [overrides]
+    [databaseProducts, overrides]
   );
 
-  function updateProduct(productId: string, changes: ProductOverride) {
+  function updateProduct(
+    productId: string,
+    changes: ProductOverride
+  ) {
     setOverrides((current) => ({
       ...current,
       [productId]: {
@@ -72,7 +166,15 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <CatalogContext.Provider
-      value={{ products, updateProduct, resetProduct, resetCatalog }}
+      value={{
+        products,
+        loading,
+        error,
+        updateProduct,
+        resetProduct,
+        resetCatalog,
+        reloadProducts,
+      }}
     >
       {children}
     </CatalogContext.Provider>
@@ -81,8 +183,12 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
 
 export function useCatalog() {
   const context = useContext(CatalogContext);
+
   if (!context) {
-    throw new Error("useCatalog debe utilizarse dentro de CatalogProvider");
+    throw new Error(
+      "useCatalog debe utilizarse dentro de CatalogProvider"
+    );
   }
+
   return context;
 }

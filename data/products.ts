@@ -14,7 +14,7 @@ export const products: Product[] = [
     id: "P001",
     name: "Sartén Kaisa Villa",
     code: "KV-1036",
-    price: 18.00,
+    price: 19.00,
     category: "Cocina",
     image: "/products/KV-1036.png",
     available: true,
